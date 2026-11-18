@@ -1,1 +1,456 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau de Bord Commercial</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{font-family:Segoe UI,Arial,sans-serif;background:#f1f5f9;color:#1e293b}
+.card{background:white;border-radius:13px;box-shadow:0 3px 12px #0f172a0c}
+select,input{outline:none}
+th{position:sticky;top:0;background:#172554;color:white;z-index:2}
+td,th{padding:11px 12px;white-space:nowrap}
+tbody tr:hover{background:#eff6ff}
+.kpi{border-left:4px solid}
+</style>
+</head>
+
+<body class="p-4 md:p-7">
+
+<div class="max-w-7xl mx-auto">
+
+<header class="flex flex-wrap justify-between items-center gap-4 mb-7">
+ <div>
+  <h1 class="text-2xl md:text-3xl font-bold text-slate-800">📊 Tableau de Bord Commercial</h1>
+  <p class="text-sm text-slate-500 mt-1">Analyse des ventes, secteurs, marques et remises</p>
+ </div>
+ <div class="flex flex-wrap gap-2">
+  <button onclick="resetFilters()" class="bg-slate-200 px-4 py-2 rounded-lg text-sm font-semibold">Réinitialiser</button>
+  <button onclick="exportCSV()" class="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">Exporter CSV</button>
+ </div>
+</header>
+
+<!-- FILTRES -->
+<section class="card p-5 mb-6">
+ <h2 class="font-bold text-sm uppercase text-slate-500 mb-4">Filtres d'analyse</h2>
+ <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+
+  <div>
+   <label class="text-xs font-semibold">Secteur / Route</label>
+   <select id="sector" class="w-full border rounded-lg p-2 mt-1" onchange="update()">
+    <option value="ALL">Tous les secteurs</option>
+   </select>
+  </div>
+
+  <div>
+   <label class="text-xs font-semibold">Marque</label>
+   <select id="brand" class="w-full border rounded-lg p-2 mt-1" onchange="update()">
+    <option value="ALL">Toutes les marques</option>
+    <option value="ain">AIN ATLAS</option>
+    <option value="bahia">BAHIA</option>
+    <option value="orangina">ORANGINA</option>
+    <option value="glass">GLASS</option>
+    <option value="vitalya">VITALYA (avec VITALYA 33)</option>
+   </select>
+  </div>
+
+  <div>
+   <label class="text-xs font-semibold">CA minimum : <span id="caLabel" class="text-blue-700">0 DH</span></label>
+   <input id="minCA" type="range" min="0" max="15000" step="500" value="0" class="w-full mt-3" oninput="update()">
+  </div>
+
+  <div>
+   <label class="text-xs font-semibold">Taux de remise maximum : <span id="rateLabel" class="text-red-600">25%</span></label>
+   <input id="maxRate" type="range" min="0" max="25" value="25" step="1" class="w-full mt-3" oninput="update()">
+  </div>
+ </div>
+
+ <div class="mt-4 flex items-center gap-2">
+  <input type="checkbox" id="group" onchange="update()">
+  <label for="group" class="text-sm">Regrouper les lignes des mêmes secteurs</label>
+ </div>
+</section>
+
+<!-- KPI -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+ <div class="card p-5 kpi border-blue-600">
+  <p class="text-xs text-slate-500 font-bold uppercase">Chiffre d'affaires</p>
+  <p id="kCA" class="text-2xl font-bold mt-2">0 DH</p>
+  <p class="text-xs text-slate-400 mt-2">CA sélectionné</p>
+ </div>
+ <div class="card p-5 kpi border-red-500">
+  <p class="text-xs text-slate-500 font-bold uppercase">Remises accordées</p>
+  <p id="kRem" class="text-2xl font-bold mt-2">0 DH</p>
+  <p class="text-xs text-slate-400 mt-2">Montant total des remises</p>
+ </div>
+ <div class="card p-5 kpi border-emerald-500">
+  <p class="text-xs text-slate-500 font-bold uppercase">Taux de remise</p>
+  <p id="kRate" class="text-2xl font-bold mt-2">0 %</p>
+  <p class="text-xs text-slate-400 mt-2">Remise / CA hors Vitalya 33</p>
+ </div>
+ <div class="card p-5 kpi border-purple-600">
+  <p class="text-xs text-slate-500 font-bold uppercase">Nombre de factures</p>
+  <p id="kFac" class="text-2xl font-bold mt-2">0</p>
+  <p id="kBasket" class="text-xs text-slate-400 mt-2">Panier moyen : 0 DH</p>
+ </div>
+</section>
+
+<!-- GRAPHIQUES -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+ <div class="card p-5 lg:col-span-2">
+  <h2 class="font-bold mb-4">CA et remises par secteur</h2>
+  <div style="height:340px"><canvas id="sectorChart"></canvas></div>
+ </div>
+ <div class="card p-5">
+  <h2 class="font-bold mb-4">Répartition du CA par marque</h2>
+  <div style="height:340px"><canvas id="brandChart"></canvas></div>
+ </div>
+</section>
+
+<!-- CLASSEMENT -->
+<section class="card p-5 mb-6">
+ <h2 class="font-bold mb-4">🏆 Classement des secteurs par chiffre d'affaires</h2>
+ <div class="overflow-x-auto">
+  <table class="w-full text-sm">
+   <thead><tr>
+    <th>Rang</th><th>Secteur</th><th class="text-right">CA</th>
+    <th class="text-right">Remise</th><th class="text-right">Taux</th>
+   </tr></thead>
+   <tbody id="ranking"></tbody>
+  </table>
+ </div>
+</section>
+
+<!-- DETAIL -->
+<section class="card overflow-hidden mb-6">
+ <div class="p-5 flex flex-wrap justify-between gap-2 items-center">
+  <div>
+   <h2 class="font-bold">Détail des ventes par secteur</h2>
+   <p class="text-xs text-slate-400 mt-1">Données filtrées automatiquement</p>
+  </div>
+  <span id="count" class="bg-blue-100 text-blue-800 rounded-full px-3 py-1 text-xs font-bold">0 lignes</span>
+ </div>
+ <div class="overflow-auto" style="max-height:600px">
+  <table class="w-full text-sm">
+   <thead><tr>
+    <th>Secteur</th><th class="text-right">CA</th>
+    <th class="text-right">Remise</th><th class="text-right">Taux</th>
+    <th class="text-right">Factures</th><th>Diagnostic</th>
+   </tr></thead>
+   <tbody id="details"></tbody>
+  </table>
+ </div>
+</section>
+
+<!-- TOTAUX FOURNIS -->
+<section class="card p-5 mb-6">
+ <h2 class="font-bold mb-4">📋 Totaux de référence du fichier source</h2>
+ <p class="text-xs text-slate-500 mb-3">Totaux communiqués dans votre tableau initial, affichés indépendamment des filtres.</p>
+ <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="sourceTotals"></div>
+</section>
+
+<footer class="text-center text-xs text-slate-400 py-5">
+ Tableau de bord commercial • Analyse des ventes et remises
+</footer>
+
+</div>
+
+<script>
+// ====================================================
+// DONNEES SOURCE
+// [secteur, remise, CA, factures,
+//  Ain remise, Ain CA, Bahia remise, Bahia CA,
+//  Orangina remise, Orangina CA, Glass remise, Glass CA,
+//  Vitalya remise, Vitalya33, Vitalya CA]
+// ====================================================
+
+const data = [
+["MESNANA",1011.58,10706.02,12,0,0,0,0,52.80,542,337.18,2441.72,621.60,3906,3789.60],
+["MESNANA",104.40,1107.16,4,54,432,0,0,0,0,0,0,50.40,310,362.40],
+["BERCHIFA",1109.84,10117.57,15,0,0,0,0,52.80,479.20,783.44,5893.04,273.60,2030.50,1689.60],
+["BERCHIFA",421.16,6202.36,0,108,864,140.40,1170.40,0,0,122.36,827.96,50.40,3038,302.40],
+["SOUANI",693.34,7472.15,16,0,0,0,0,203.20,1379.20,120.54,1370.32,369.60,2418,2286],
+["BATOUTA",779.40,6058.97,14,0,0,0,0,52.80,540,396.60,2896.56,330,604.50,2002.80],
+["BATOUTA",437.40,5001.07,17,135,1161,46.80,561.60,0,52.80,42,916.80,213.60,992,1304.40],
+["BENDIBAN",276.50,4201.36,12,0,0,0,0,0,0,200.90,1979.88,75.60,1581,630],
+["BENDIBAN",682.74,6448.76,13,162,1296,257.40,1614.60,0,58.80,238.14,1669.08,25.20,1643,151.20],
+["HASSANI",1557.60,11616.97,17,0,0,0,0,52.80,304.80,201.60,1449,1303.20,2015,7819.20],
+["HASSANI",1083.54,8997.98,17,297,2376,117,889.20,158.40,864.80,242.34,1745.24,268.80,1379.50,1720.80],
+["ASILAH",648.60,5227.34,12,0,0,0,0,58.80,294,79.80,596.40,510,1069.50,3254.40],
+["ASILAH",38.40,4900.50,11,27,216,0,0,0,0,0,159.60,11.40,4014.50,343.80],
+["BOUKHALF",757.76,7724.52,12,0,0,0,0,0,0,118.16,822.36,639.60,3022.50,3860.40],
+["ACHAKAR",991.78,8703.28,12,81,648,70.20,491.40,211.20,1362.40,287.38,2152.78,342,1643,2433.60],
+["GZENAYA",796.16,9503.70,12,189,1512,187.20,1333.80,0,0,80.36,567,339.60,3906,2161.20],
+["GZENAYA",469.78,3797.10,0,135,1080,117,819,0,0,82.18,596.40,135.60,356.50,843.60],
+["DRADEB",379.12,7451.92,11,27,216,23.40,327.60,52.80,280,160.72,1216.74,115.20,4619,774],
+["AHLAN",960.54,7916.04,11,162,1296,140.40,1029.60,52.80,381.60,185.34,1352.10,420,1209,2680],
+["BASSATIN",315.52,4339.14,9,27,216,23.40,187.20,0,0,214.72,1483.72,50.40,2139,302.40],
+["HADAD",566.24,6190.76,19,27,243,70.20,678.60,0,0,363.44,2636.12,105.60,1984,633.40],
+["BRANESS",478.14,6378.52,10,135,1080,23.40,163.80,0,0,204.54,1844.92,115.20,2557.50,716.40]
+];
+
+// Totaux de référence communiqués
+const reference = {
+ ca:150063.20, rem:14559.54, ain:12636,
+ bahia:9266.80, orangina:6800.80, glass:34611.72,
+ vitalya:40061.60, v33:46438, fac:269
+};
+
+const names = {
+ ain:"AIN ATLAS", bahia:"BAHIA",
+ orangina:"ORANGINA", glass:"GLASS",
+ vitalya:"VITALYA"
+};
+
+const money = n => (n||0).toLocaleString("fr-FR",{
+ minimumFractionDigits:2, maximumFractionDigits:2
+})+" DH";
+
+const percent = n => (n||0).toLocaleString("fr-FR",{
+ minimumFractionDigits:2,maximumFractionDigits:2
+})+" %";
+
+const sum = (arr,fn) => arr.reduce((s,x)=>s+fn(x),0);
+
+function getValues(r,brand){
+ if(brand==="ALL") return {
+  ca:r[2], rem:r[1], base:r[2]-r[13]
+ };
+ if(brand==="ain") return {ca:r[5],rem:r[4],base:r[5]};
+ if(brand==="bahia") return {ca:r[7],rem:r[6],base:r[7]};
+ if(brand==="orangina") return {ca:r[9],rem:r[8],base:r[9]};
+ if(brand==="glass") return {ca:r[11],rem:r[10],base:r[11]};
+ if(brand==="vitalya") return {
+  ca:r[13]+r[14],rem:r[12],base:r[13]+r[14]
+ };
+}
+
+function rate(v){
+ return v.base>0 ? v.rem/v.base*100 : 0;
+}
+
+function init(){
+ const sectors=[...new Set(data.map(r=>r[0]))];
+ sectors.forEach(s=>{
+  const o=document.createElement("option");
+  o.value=s;o.textContent=s;
+  document.getElementById("sector").appendChild(o);
+ });
+ drawReference();
+ update();
+}
+
+function filtered(){
+ const sector=document.getElementById("sector").value;
+ const brand=document.getElementById("brand").value;
+ const min=+document.getElementById("minCA").value;
+ const max=+document.getElementById("maxRate").value;
+ const grouped=document.getElementById("group").checked;
+
+ let rows=data.filter(r=>{
+  const v=getValues(r,brand);
+  return (sector==="ALL"||r[0]===sector)
+    && v.ca>=min
+    && rate(v)<=max;
+ });
+
+ if(!grouped) return rows.map(r=>({name:r[0],rows:[r]}));
+
+ const groups={};
+ rows.forEach(r=>{
+  if(!groups[r[0]])groups[r[0]]=[];
+  groups[r[0]].push(r);
+ });
+ return Object.entries(groups).map(([name,rows])=>({name,rows}));
+}
+
+function aggregate(rows,brand){
+ return {
+  ca:sum(rows,r=>getValues(r,brand).ca),
+  rem:sum(rows,r=>getValues(r,brand).rem),
+  base:sum(rows,r=>getValues(r,brand).base),
+  fac:sum(rows,r=>r[3])
+ };
+}
+
+function update(){
+ document.getElementById("caLabel").textContent=
+  (+document.getElementById("minCA").value).toLocaleString("fr-FR")+" DH";
+ document.getElementById("rateLabel").textContent=
+  document.getElementById("maxRate").value+"%";
+
+ const brand=document.getElementById("brand").value;
+ const rows=filtered();
+ const allRows=rows.flatMap(g=>g.rows);
+ const t=aggregate(allRows,brand);
+ const taux=t.base>0?t.rem/t.base*100:0;
+
+ document.getElementById("kCA").textContent=money(t.ca);
+ document.getElementById("kRem").textContent=money(t.rem);
+ document.getElementById("kRate").textContent=percent(taux);
+ document.getElementById("kFac").textContent=t.fac;
+ document.getElementById("kBasket").textContent=
+  "Panier moyen : "+money(t.fac?t.ca/t.fac:0);
+
+ document.getElementById("count").textContent=
+  allRows.length+" lignes source";
+
+ renderDetails(rows,brand);
+ renderRanking(allRows,brand);
+ renderCharts(allRows,brand);
+}
+
+function diagnostic(t){
+ const r=t.base>0?t.rem/t.base*100:0;
+ if(t.ca===0)return "Aucune vente";
+ if(r>=17)return "⚠ Remise élevée";
+ if(r>=14)return "À surveiller";
+ return "✓ Situation normale";
+}
+
+function renderDetails(rows,brand){
+ const body=document.getElementById("details");
+ body.innerHTML="";
+ rows.forEach(g=>{
+  const t=aggregate(g.rows,brand);
+  const tr=document.createElement("tr");
+  tr.innerHTML=`
+   <td class="font-semibold">${g.name}${g.rows.length>1&&document.getElementById("group").checked?" ("+g.rows.length+" lignes)":""}</td>
+   <td class="text-right">${money(t.ca)}</td>
+   <td class="text-right">${money(t.rem)}</td>
+   <td class="text-right font-semibold">${percent(t.base?t.rem/t.base*100:0)}</td>
+   <td class="text-right">${t.fac}</td>
+   <td>${diagnostic(t)}</td>`;
+  body.appendChild(tr);
+ });
+}
+
+function renderRanking(rows,brand){
+ const sectors={};
+ rows.forEach(r=>{
+  if(!sectors[r[0]])sectors[r[0]]=[];
+  sectors[r[0]].push(r);
+ });
+ const ranking=Object.entries(sectors).map(([name,rs])=>{
+  const t=aggregate(rs,brand);
+  return {name,...t};
+ }).sort((a,b)=>b.ca-a.ca);
+
+ document.getElementById("ranking").innerHTML=ranking.map((r,i)=>`
+ <tr>
+ <td>${i+1}</td>
+ <td class="font-semibold">${r.name}</td>
+ <td class="text-right">${money(r.ca)}</td>
+ <td class="text-right">${money(r.rem)}</td>
+ <td class="text-right">${percent(r.base?r.rem/r.base*100:0)}</td>
+ </tr>`).join("");
+}
+
+let sectorChart,brandChart;
+
+function renderCharts(rows,brand){
+ const groups={};
+ rows.forEach(r=>{
+  if(!groups[r[0]])groups[r[0]]=[];
+  groups[r[0]].push(r);
+ });
+ const labels=Object.keys(groups);
+ const ca=labels.map(s=>aggregate(groups[s],brand).ca);
+ const rem=labels.map(s=>aggregate(groups[s],brand).rem);
+
+ if(sectorChart)sectorChart.destroy();
+ sectorChart=new Chart(document.getElementById("sectorChart"),{
+  type:"bar",
+  data:{labels,datasets:[
+   {label:"Chiffre d'affaires",data:ca,backgroundColor:"#2563eb",borderRadius:5},
+   {label:"Remises",data:rem,backgroundColor:"#f59e0b",borderRadius:5}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,
+   plugins:{legend:{position:"bottom"}},
+   scales:{y:{beginAtZero:true}}
+  }
+ });
+
+ const keys=["ain","bahia","orangina","glass","vitalya"];
+ const brandValues=keys.map(k=>{
+  if(brand!=="ALL")return k===brand?sum(rows,r=>getValues(r,k).ca):0;
+  return sum(rows,r=>getValues(r,k).ca);
+ });
+
+ if(brandChart)brandChart.destroy();
+ brandChart=new Chart(document.getElementById("brandChart"),{
+  type:"doughnut",
+  data:{labels:keys.map(k=>names[k]),datasets:[{
+   data:brandValues,
+   backgroundColor:["#2563eb","#f59e0b","#ef4444","#10b981","#8b5cf6"],
+   borderWidth:2
+  }]},
+  options:{responsive:true,maintainAspectRatio:false,
+   plugins:{legend:{position:"bottom"}}
+  }
+ });
+}
+
+function drawReference(){
+ const items=[
+  ["CA TOTAL",reference.ca],
+  ["REMISES",reference.rem],
+  ["AIN ATLAS",reference.ain],
+  ["BAHIA",reference.bahia],
+  ["ORANGINA",reference.orangina],
+  ["GLASS",reference.glass],
+  ["VITALYA",reference.vitalya],
+  ["VITALYA 33",reference.v33]
+ ];
+ document.getElementById("sourceTotals").innerHTML=items.map(x=>`
+ <div class="bg-slate-50 rounded-lg p-3">
+ <p class="text-xs text-slate-500">${x[0]}</p>
+ <p class="font-bold mt-1">${money(x[1])}</p>
+ </div>`).join("");
+}
+
+function resetFilters(){
+ document.getElementById("sector").value="ALL";
+ document.getElementById("brand").value="ALL";
+ document.getElementById("minCA").value=0;
+ document.getElementById("maxRate").value=25;
+ document.getElementById("group").checked=false;
+ update();
+}
+
+function exportCSV(){
+ const brand=document.getElementById("brand").value;
+ const rows=filtered();
+ const lines=[[
+  "Secteur","CA","Remise","Taux","Factures","Diagnostic"
+ ]];
+
+ rows.forEach(g=>{
+  const t=aggregate(g.rows,brand);
+  lines.push([
+   g.name,t.ca.toFixed(2),t.rem.toFixed(2),
+   (t.base?t.rem/t.base*100:0).toFixed(2)+"%",
+   t.fac,diagnostic(t)
+  ]);
+ });
+
+ const csv="\uFEFF"+lines.map(row=>
+  row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")
+ ).join("\r\n");
+
+ const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");
+ a.href=url;
+ a.download="analyse_commerciale.csv";
+ a.click();
+ URL.revokeObjectURL(url);
+}
+
+init();
+</script>
+</body>
+</html>
 
